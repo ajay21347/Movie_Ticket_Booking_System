@@ -9,9 +9,9 @@ document.addEventListener("DOMContentLoaded", () => {
     setMinDate();
 });
 
-// Fetch movies from backend
-function fetchMovies() {
-    fetch("/api/movies")
+// ------------------ Fetch & Display Movies ------------------
+function fetchMovies(sort_by = "") {
+    fetch(`/api/movies?sort_by=${sort_by}`)
         .then(res => res.json())
         .then(data => {
             movies = data;
@@ -38,6 +38,7 @@ function displayMovies() {
 // Populate movie dropdown in booking form
 function populateMovieSelect() {
     const select = document.getElementById('movieSelect');
+    select.innerHTML = '<option value="">Select a movie</option>';
     movies.forEach(m => {
         const opt = document.createElement('option');
         opt.value = m.id;
@@ -46,14 +47,18 @@ function populateMovieSelect() {
     });
 }
 
-// Set minimum date as today
+// ------------------ Sorting ------------------
+function sortMoviesBy(field) {
+    fetchMovies(field); // backend quicksort handles sorting
+}
+
+// ------------------ Date & Movie Selection ------------------
 function setMinDate() {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('dateSelect').min = today;
     document.getElementById('dateSelect').value = today;
 }
 
-// Select movie from homepage card
 function selectMovie(id) {
     document.getElementById('movieSelect').value = id;
     showTab('booking');
@@ -75,7 +80,6 @@ function updateShowtimes() {
     const select = document.getElementById('showtimeSelect');
 
     select.innerHTML = '<option value="">Choose a showtime</option>';
-
     if (movieId && date) {
         showtimes.forEach(time => {
             const opt = document.createElement('option');
@@ -89,33 +93,31 @@ function updateShowtimes() {
     selectedSeats = [];
 }
 
-// Load seat grid for selected movie, date, time
-function loadSeats() {
+// ------------------ Seat Handling ------------------
+function loadSeats(autoAssign = false) {
     const movieId = document.getElementById('movieSelect').value;
     const date = document.getElementById('dateSelect').value;
     const time = document.getElementById('showtimeSelect').value;
-
     if (!movieId || !date || !time) return;
 
     const key = `${movieId}-${date}-${time}`;
 
-    // Fetch booked seats from backend
     fetch(`/api/bookings?search=`)
         .then(res => res.json())
         .then(data => {
             bookedSeats[key] = [];
-            data.forEach(b => {
+            data.bookings.forEach(b => {
                 if (b.movie_id == movieId && b.date == date && b.time == time) {
                     bookedSeats[key] = bookedSeats[key].concat(b.seats.map(Number));
                 }
             });
 
-            renderSeats(key);
+            renderSeats(key, autoAssign);
         });
 }
 
 // Render seat grid
-function renderSeats(key) {
+function renderSeats(key, autoAssign = false) {
     const grid = document.getElementById('seatsGrid');
     grid.innerHTML = '';
     const booked = bookedSeats[key] || [];
@@ -134,6 +136,24 @@ function renderSeats(key) {
         }
 
         grid.appendChild(seat);
+    }
+
+    // Auto-assign best available seat using heap logic
+    if (autoAssign) {
+        fetch(`/api/book`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ movie_id: document.getElementById('movieSelect').value, date: document.getElementById('dateSelect').value, time: document.getElementById('showtimeSelect').value, seats: [] })
+        })
+        .then(res => res.json())
+        .then(data => {
+            selectedSeats = data.seats;
+            selectedSeats.forEach(s => {
+                const seatEl = document.querySelector(`[data-seat="${s}"]`);
+                if (seatEl) seatEl.classList.add('selected');
+            });
+            updateSummary();
+        });
     }
 
     document.getElementById('seatsContainer').style.display = 'block';
@@ -156,7 +176,7 @@ function toggleSeat(seatNum, key) {
     updateSummary();
 }
 
-// Update booking summary
+// ------------------ Booking Summary ------------------
 function updateSummary() {
     const movieId = document.getElementById('movieSelect').value;
     const date = document.getElementById('dateSelect').value;
@@ -168,7 +188,7 @@ function updateSummary() {
 
         document.getElementById('summaryMovie').textContent = movie.title;
         document.getElementById('summaryDateTime').textContent = `${date} at ${time}`;
-        document.getElementById('summarySeats').textContent = selectedSeats.sort((a, b) => a - b).join(', ');
+        document.getElementById('summarySeats').textContent = selectedSeats.sort((a,b)=>a-b).join(', ');
         document.getElementById('summaryTickets').textContent = selectedSeats.length;
         document.getElementById('summaryTotal').textContent = `₹${total}`;
         document.getElementById('bookingSummary').style.display = 'block';
@@ -177,7 +197,7 @@ function updateSummary() {
     }
 }
 
-// Confirm booking and send to backend
+// ------------------ Confirm Booking ------------------
 function confirmBooking() {
     const movieId = document.getElementById('movieSelect').value;
     const date = document.getElementById('dateSelect').value;
@@ -186,63 +206,34 @@ function confirmBooking() {
     const email = document.getElementById('customerEmail').value;
     const phone = document.getElementById('customerPhone').value;
 
-    if (!movieId || !date || !time) {
-        showMessage('Please select movie, date and showtime', 'error');
-        return;
-    }
-
-    if (selectedSeats.length === 0) {
-        showMessage('Please select at least one seat', 'error');
-        return;
-    }
-
-    if (!name || !email || !phone) {
-        showMessage('Please fill in all customer details', 'error');
-        return;
-    }
+    if (!movieId || !date || !time) { showMessage('Please select movie, date and showtime', 'error'); return; }
+    if (selectedSeats.length === 0) { showMessage('Please select at least one seat', 'error'); return; }
+    if (!name || !email || !phone) { showMessage('Please fill in all customer details', 'error'); return; }
 
     const movie = movies.find(m => m.id == movieId);
     const total = selectedSeats.length * movie.price;
 
-    const payload = {
-        movie_id: movieId,
-        movie_title: movie.title,
-        date: date,
-        time: time,
-        seats: selectedSeats,
-        name: name,
-        email: email,
-        phone: phone,
-        total: total
-    };
-
     fetch('/api/book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ movie_id: movieId, movie_title: movie.title, date, time, seats: selectedSeats, name, email, phone, total })
     })
     .then(res => res.json())
     .then(data => {
         showMessage(data.message, 'success');
-        setTimeout(() => {
-            resetBookingForm();
-        }, 2000);
+        setTimeout(resetBookingForm, 2000);
     });
 }
 
-// Show temporary messages
+// ------------------ Messages & Reset ------------------
 function showMessage(msg, type) {
     const msgEl = document.getElementById('bookingMessage');
     msgEl.textContent = msg;
     msgEl.className = `message ${type}`;
     msgEl.style.display = 'block';
-
-    setTimeout(() => {
-        msgEl.style.display = 'none';
-    }, 5000);
+    setTimeout(() => { msgEl.style.display = 'none'; }, 5000);
 }
 
-// Reset booking form
 function resetBookingForm() {
     document.getElementById('movieSelect').value = '';
     document.getElementById('dateSelect').value = new Date().toISOString().split('T')[0];
@@ -255,25 +246,20 @@ function resetBookingForm() {
     selectedSeats = [];
 }
 
-// Search bookings by email or phone
+// ------------------ Search Bookings ------------------
 function searchBookings() {
     const search = document.getElementById('searchBooking').value.toLowerCase();
     const list = document.getElementById('bookingsList');
 
-    if (!search) {
-        list.innerHTML = '<p style="color: #6c757d;">Please enter email or phone to search</p>';
-        return;
-    }
+    if (!search) { list.innerHTML = '<p style="color:#6c757d;">Please enter email or phone to search</p>'; return; }
 
     fetch(`/api/bookings?search=${search}`)
         .then(res => res.json())
         .then(data => {
-            if (data.length === 0) {
-                list.innerHTML = '<p style="color: #6c757d;">No bookings found</p>';
-                return;
-            }
+            const bookings = data.bookings || [];
+            if (bookings.length === 0) { list.innerHTML = '<p style="color:#6c757d;">No bookings found</p>'; return; }
 
-            list.innerHTML = data.map(b => `
+            list.innerHTML = bookings.map(b => `
                 <div class="booking-item">
                     <div class="booking-header">
                         <span class="booking-id">Booking #${b.id}</span>
