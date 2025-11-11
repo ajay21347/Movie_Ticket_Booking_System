@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>CineBook Admin Dashboard</title>
+    <link rel="stylesheet" href="{{url_for('static',filename='styles.css')}}" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🎬CineBook Admin</h1>
+        <button class="logout-btn" onclick="window.location.href='/logout'">
+          Logout
+        </button>
+      </header>
+      <div class="tabs">
+        <button class="tab active" onclick="showTab('upload')">
+          Upload Movie
+        </button>
+        <button class="tab" onclick="showTab('bookings')">View Bookings</button>
+        <button class="tab" onclick="showTab('availability')">
+          Seat Availability
+        </button>
+      </div>
+      <div id="upload" class="tab-content active">
+        <h2>Add New Movie</h2>
+        <div class="form-group">
+          <label>Title</label><input type="text" id="movieTitle" />
+        </div>
+        <div class="form-group">
+          <label>Duration</label><input type="text" id="movieDuration" />
+        </div>
+        <div class="form-group">
+          <label>Price</label><input type="number" id="moviePrice" />
+        </div>
+        <button class="btn" onclick="addMovie()">Add Movie</button>
+        <div id="adminMsg" class="message"></div>
+      </div>
+      <div id="bookings" class="tab-content">
+        <h2>All Bookings</h2>
+        <div id="adminBookings"></div>
+      </div>
+      <div id="availability" class="tab-content">
+        <h2>Seat Availability</h2>
+        <p>Comming soon..</p>
+      </div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+  </body>
+</html>
